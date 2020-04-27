@@ -48,7 +48,7 @@ cd(@__DIR__)
 ENV["JULIA_DEBUG"] = "Documenter"
 makedocs(modules = [Agents,AgentsPlots],
 sitename= "Agents.jl",
-authors = "Ali R. Vahdati, George Datseris and contributors.",
+authors = "Ali R. Vahdati, George Datseris, Tim DuBois and contributors.",
 doctest = false,
 format = Documenter.HTML(
     prettyurls = CI,
@@ -68,7 +68,9 @@ pages = [
         "Conway's game of life" => "examples/game_of_life_2D_CA.md",
         "Wright-Fisher model of evolution" => "examples/wright-fisher.md",
         "Hegselmann-Krause opinion dynamics" => "examples/HK.md",
-        "Flocking" => "examples/flock.md"
+        "Flocking" => "examples/flock.md",
+        "Daisyworld" => "examples/daisyworld.md"
+        "Bacteria Growth" => "examples/growing_bacteria.md"
         ],
     "API" => "api.md",
     "Comparison against Mesa (Python)" => "mesa.md"

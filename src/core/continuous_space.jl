@@ -1,5 +1,5 @@
 using DataFrames, SQLite
-export ContinuousSpace, index!
+export ContinuousSpace, index!, update_space!
 
 #######################################################################################
 # Continuous space structure
@@ -31,8 +31,12 @@ the agent's velocity to use [`move_agent!`](@ref).
 The optional argument `update_vel!` is a **function**, `update_vel!(agent, model)` that updates
 the agent's velocity **before** the agent has been moved, see [`move_agent!`](@ref).
 You can of course change the agents' velocities
-during the agent interaction, the `update_vel!` functionality targets arbitrary forces.
+during the agent interaction, the `update_vel!` functionality targets arbitrary force
+fields acting on the agents (e.g. some magnetic field).
 By default no update is done this way.
+
+Notice that if you need to write your own custom `move_agent` function, call
+[`update_space`](@ref) at the end, like in e.g. the [Bacteria Growth](@ref) example.
 
 ## Keywords
 * `periodic = true` : whether continuous space is periodic or not
@@ -157,6 +161,7 @@ end
     move_agent!(agent::A, model::ABM{A, ContinuousSpace}, dt = 1.0)
 Propagate the agent forwards one step according to its velocity,
 _after_ updating the agent's velocity (see [`ContinuousSpace`](@ref)).
+Also take care of periodic boundary conditions.
 
 For this continuous space version of `move_agent!`, the "evolution algorithm"
 is a trivial Euler scheme with `dt` the step size, i.e. the agent position is updated
@@ -168,8 +173,17 @@ function move_agent!(agent::A, model::ABM{A, S, F, P}, dt = 1.0) where {A<:Abstr
   if model.space.periodic
     agent.pos = mod.(agent.pos, model.space.extend)
   end
-  DBInterface.execute(model.space.updateq, (agent.pos..., agent.id))
+  update_space!(model, agent)
   return agent.pos
+end
+
+"""
+    update_space!(model::ABM{A, ContinuousSpace}, agent)
+Update the internal representation of continuous space to match the new position of
+the agent (useful in custom `move_agent` functions).
+"""
+function update_space!(model::ABM{A, <: ContinuousSpace}, agent) where {A}
+  DBInterface.execute(model.space.updateq, (agent.pos..., agent.id))
 end
 
 function kill_agent!(agent::AbstractAgent, model::ABM{A, S}) where {A, S<:ContinuousSpace}
@@ -316,39 +330,108 @@ function elastic_collision!(a, b, f = nothing)
 end
 
 """
-    interacting_pairs(model, r)
-Return an iterator that yields pairs of agents `(a1, a2)` that are closest
+    interacting_pairs(model, r, method; scheduler = model.scheduler)
+Return an iterator that yields unique pairs of agents `(a1, a2)` that are close
 neighbors to each other, within some interaction radius `r`.
 
 This function is usefully combined with `model_step!`, when one wants to perform
-some pairwise interaction across all pairs of closest agents once
+some pairwise interaction across all pairs of close agents once
 (and does not want to trigger the event twice, both with `a1` and with `a2`, which
 is unavoidable when using `agent_step!`).
 
-Internally uses [`nearest_neighbor`](@ref).
+The argument `method` provides three pairing scenarios
+- `:all`: return every pair of agents that are within radius `r` of each other,
+  not only the nearest ones.
+- `:nearest`: agents are only paired with their true nearest neighbor
+  (existing within radius `r`).
+  Each agent can only belong to one pair, therefore if two agents share the same nearest
+  neighbor only one of them (sorted by id) will be paired.
+- `:scheduler`: agents are scanned according to the given keyword `scheduler`
+  (by default the model's scheduler), and each scanned
+  agent is paired to its nearest neighbor. Similar to `:nearest`, each agent can belong
+  to only one pair. This functionality is useful e.g. when you want some agents to be
+  paired "guaranteed", even if some other agents might be nearest to each other.
 """
-function interacting_pairs(model, r)
-  pairs = Tuple{Int, Int}[]
-  #TODO: This can be optimized further I assume
-  for id in keys(model.agents)
-    # Skip already checked agents
-    any(isequal(id), p[2] for p in pairs) && continue
-    a1 = model[id]
-    a2 = nearest_neighbor(a1, model, r)
-    a2 ≠ nothing && push!(pairs, (id, a2.id))
-  end
-  return PairIterator(pairs, model.agents)
+function interacting_pairs(model::ABM, r::Real, method; scheduler = model.scheduler)
+    @assert method ∈ (:scheduler, :nearest, :all)
+    pairs = Tuple{Int,Int}[]
+    if method == :nearest
+        true_pairs!(pairs, model, r)
+    elseif method == :scheduler
+        scheduler_pairs!(pairs, model, r, scheduler)
+    elseif method == :all
+        all_pairs!(pairs, model, r)
+    end
+    return PairIterator(pairs, model.agents)
+end
+
+function scheduler_pairs!(pairs::Vector{Tuple{Int,Int}}, model::ABM, r::Real, scheduler)
+    #TODO: This can be optimized further I assume
+    for id in scheduler(model)
+        # Skip already checked agents
+        any(isequal(id), p[2] for p in pairs) && continue
+        a1 = model[id]
+        a2 = nearest_neighbor(a1, model, r)
+        # This line ensures each neighbor exists in only one pair:
+        if a2 ≠ nothing && !any(isequal(a2.id), p[2] for p in pairs)
+            push!(pairs, (id, a2.id))
+        end
+    end
+end
+
+function all_pairs!(pairs::Vector{Tuple{Int,Int}}, model::ABM, r::Real)
+    for a in allagents(model)
+        for nid in space_neighbors(a, model, r)
+            # Sort the pair to overcome any uniqueness issues
+            new_pair = isless(a.id, nid) ? (a.id, nid) : (nid, a.id)
+            new_pair ∉ pairs && push!(pairs, new_pair)
+        end
+    end
+end
+
+function true_pairs!(pairs::Vector{Tuple{Int,Int}}, model::ABM, r::Real)
+    distances = Vector{Float64}(undef, 0)
+    for a in allagents(model)
+        nn = nearest_neighbor(a, model, r)
+        nn == nothing && continue
+        # Sort the pair to overcome any uniqueness issues
+        new_pair = isless(a.id, nn.id) ? (a.id, nn.id) : (nn.id, a.id)
+        if new_pair ∉ pairs
+            # We also need to check if our current pair is closer to each
+            # other than any pair using our first id already in the list,
+            # so we keep track of nn distances.
+            dist = pair_distance(a.pos, model[nn.id].pos, model.space.metric)
+
+            idx = findfirst(x -> first(new_pair) == x, first.(pairs))
+            if idx == nothing
+                push!(pairs, new_pair)
+                push!(distances, dist)
+            elseif idx != nothing && distances[idx] > dist
+                # Replace this pair, it is not the true neighbor
+                pairs[idx] = new_pair
+                distances[idx] = dist
+            end
+        end
+    end
+end
+
+function pair_distance(pos1, pos2, metric::Symbol)
+    if metric == :euclidean
+        sqrt(sum(abs2.(pos1 .- pos2)))
+    elseif metric == :cityblock
+        sum(abs.(pos1 .- pos2))
+    end
 end
 
 struct PairIterator{A}
-  pairs::Vector{Tuple{Int, Int}}
-  agents::Dict{Int, A}
+    pairs::Vector{Tuple{Int,Int}}
+    agents::Dict{Int,A}
 end
 
 Base.length(iter::PairIterator) = length(iter.pairs)
 function Base.iterate(iter::PairIterator, i = 1)
-  i > length(iter) && return nothing
-  p = iter.pairs[i]
-  id1, id2 = p
-  return (iter.agents[id1], iter.agents[id2]), i+1
+    i > length(iter) && return nothing
+    p = iter.pairs[i]
+    id1, id2 = p
+    return (iter.agents[id1], iter.agents[id2]), i + 1
 end

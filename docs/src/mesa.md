@@ -17,6 +17,6 @@ We tested a range of grid sizes and population sizes for the forest fire the boi
 Figure below shows the ratio of the time it takes to run the models in Mesa
 over the time it takes to run them in Agents.jl. The model implemented in 
 Agents.jl is up to more than 14 times faster than the model implemented in Mesa
-for the forest fire model and about 9 times faster for the boid flocking.
+for the forest fire model and about 7 times faster for the boid flocking. There are also micro-benchmarks for basic operations in the continuous space, including killing and moving agents and finding their neighbors.
 
 ![Speed comparison of a version of "forest fire" and "boid flocking" models in Agents.jl vs Mesa.](benchmark_mesa.svg)

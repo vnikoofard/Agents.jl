@@ -67,9 +67,11 @@ function iterate_over_nearby_ids2(aa::Vector, model)
 end
 
 # %% ARRAY VERSION
+(model, agent_step!, model_step!) = forest_fire_array(;periodic=false, metric=:chebyshev)
+
 println("\n\nTimes of NEW grid")
-println("Full model stepping")
-@btime step!($model, $agent_step!, $model_step!, 500) setup=((model, agent_step!, model_step!) = forest_fire_array())
+# println("Full model stepping")
+# @btime step!($model, $agent_step!, $model_step!, 500) setup=((model, agent_step!, model_step!) = forest_fire_array())
 
 (model, agent_step!, model_step!) = forest_fire_array(;periodic=false, metric=:chebyshev)
 step!(model, agent_step!, model_step!, 1)
@@ -77,21 +79,28 @@ a = random_agent(model)
 aa = [random_agent(model) for i in 1:100]
 sleep(1e-9)
 
-println("Nearby Agents")
+println("nearby_ids(agent)")
 @btime nearby_ids($a, $model);
-println("Iterate over nearby agents")
-@btime iterate_over_nearby_ids($a, $model);
-println("Iterate over nearby agents with position")
-@btime iterate_over_nearby_ids($a.pos, $model);
-println("Iterate over nearby agents2")
-@btime iterate_over_nearby_ids2($aa, $model);
+println("nearby_ids(position)")
+@btime nearby_ids($a.pos, $model);
+println("nearby_agents(agent)")
+@btime nearby_agents($a, $model);
 println("nearby positions")
 @btime nearby_positions($a.pos, $model);
 
+# When iterating over nearby_ids(agent), allocations happen. Why?
+println("Iterate over nearby_ids(position)")
+@btime iterate_over_nearby_ids($a.pos, $model);
+println("Iterate over nearby_ids(agent)")
+@btime iterate_over_nearby_ids($a, $model);
+
+
+println("Iterate over nearby agents2")
+@btime iterate_over_nearby_ids2($aa, $model);
 
 println("Move agent")
 @btime move_agent!($a, $model);
 println("Move agent single")
 @btime move_agent_single!($a, $model);
-println("Add agent")
-@btime add_agent!($model, true)
+# println("Add agent")
+# @btime add_agent!($model, true)

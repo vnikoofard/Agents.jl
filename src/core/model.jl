@@ -13,7 +13,8 @@ abstract type DiscreteSpace <: AbstractSpace end
 ValidPos = Union{Int, NTuple{N, Int}, NTuple{M, <:AbstractFloat}, Tuple{Int, Int, Float64}} where {N, M}
 
 struct AgentBasedModel{S<:SpaceType, A<:AbstractAgent, F, P}
-    agents::Dict{Int,A}
+    agents::StructArray{A}
+    index::Dict{Int,Int} # Actual ID => position in agents array
     space::S
     scheduler::F
     properties::P
@@ -73,8 +74,9 @@ function AgentBasedModel(
         ) where {A<:AbstractAgent, S<:SpaceType, F, P}
     agent_validator(A, space, warn)
 
-    agents = Dict{Int, A}()
-    return ABM{S, A, F, P}(agents, space, scheduler, properties, Ref(0))
+    agents = StructArray{A}(undef, 0)
+    index = Dict{Int,Int}()
+    return ABM{S, A, F, P}(agents, index, space, scheduler, properties, Ref(0))
 end
 
 function AgentBasedModel(agent::AbstractAgent, args...; kwargs...)
@@ -92,7 +94,7 @@ export random_agent, nagents, allagents, allids, nextid
 
 Return an agent given its ID.
 """
-Base.getindex(m::ABM, id::Integer) = m.agents[id]
+Base.getindex(m::ABM, id::Integer) = m.agents[m.index[id]]
 
 """
     model[id] = agent
@@ -102,6 +104,7 @@ Add an `agent` to the `model` at a given index: `id`.
 Note this method will return an error if the `id` requested is not equal to `agent.id`.
 **Internal method**, use [`add_agents!`](@ref) instead to actually add an agent.
 """
+#TODO
 function Base.setindex!(m::ABM, a::AbstractAgent, id::Int)
     a.id ≠ id && throw(ArgumentError("You are adding an agent to an ID not equal with the agent's ID!"))
     m.agents[id] = a
@@ -130,6 +133,8 @@ and **should not be accessed by the user**.
 function Base.getproperty(m::ABM{S, A, F, P}, s::Symbol) where {S, A, F, P}
     if s === :agents
         return getfield(m, :agents)
+    elseif s === :index
+        return getfield(m, :index)
     elseif s === :space
         return getfield(m, :space)
     elseif s === :scheduler
@@ -158,7 +163,7 @@ end
     random_agent(model) → agent
 Return a random agent from the model.
 """
-random_agent(model) = model[rand(keys(model.agents))]
+random_agent(model) = rand(model.agents)
 
 """
     random_agent(model, condition) → agent
@@ -167,13 +172,13 @@ The function generates a random permutation of agent IDs and iterates through th
 If no agent satisfies the condition, `nothing` is returned instead.
 """
 function random_agent(model, condition)
-    ids = shuffle!(collect(keys(model.agents)))
+    ids = shuffle!(collect(keys(model.index)))
     i, L = 1, length(ids)
-    a = model[ids[1]]
+    a = getindex(model, ids[1])
     while !condition(a)
         i += 1
         i > L && return nothing
-        a = model[ids[i]]
+        a = getindex(model, ids[i])
     end
     return a
 end
@@ -188,14 +193,16 @@ nagents(model::ABM) = length(model.agents)
     allagents(model)
 Return an iterator over all agents of the model.
 """
-allagents(model) = values(model.agents)
+#TODO
+allagents(model) = model.agents
 
 
 """
     allids(model)
 Return an iterator over all agent IDs of the model.
 """
-allids(model) = keys(model.agents)
+#TODO rethink
+allids(model) = keys(model.index)
 
 #######################################################################################
 # %% Model construction validation

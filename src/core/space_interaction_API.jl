@@ -117,7 +117,9 @@ nearby_positions(position, model, r = 1) = notimplemented(model)
 Remove an agent from the model.
 """
 function kill_agent!(a::AbstractAgent, model::ABM)
-    delete!(model.agents, a.id)
+    aidx = model.index[a.id]
+    delete!(model.agents, aidx)
+    delete!(model.index, a.id)
     remove_agent_from_space!(a, model)
 end
 
@@ -180,8 +182,13 @@ end
 Add the agent to the `model` at the agent's own position.
 """
 function add_agent_pos!(agent::AbstractAgent, model::ABM)
-    model[agent.id] = agent
-    model.maxid[] < agent.id && (model.maxid[] = agent.id)
+    push!(model.agents, agent)
+    if model.maxid[] < agent.id
+        model.maxid[] = agent.id
+        model.index[agent.id] = agent.id
+    else
+        model.index[agent.id] = length(model.agents)
+    end
     add_agent_to_space!(agent, model)
     return agent
 end

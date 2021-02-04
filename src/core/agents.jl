@@ -57,7 +57,7 @@ end
 ```
 """
 macro agent(name, base, fields)
-    base_type = eval(base)
+    local base_type = eval(base)
     base_fieldnames = fieldnames(base_type)
     base_types = [t for t in base_type.types]
     base_fields = [:($f::$T) for (f, T) in zip(base_fieldnames, base_types)]

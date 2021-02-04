@@ -57,9 +57,17 @@ end
 ```
 """
 macro agent(name, base, fields)
-    base_type = getfield(@__MODULE__, base)
+    if hasfield(typeof(base), :args)
+        # This option assumes only one parametric
+        # type for dimensionality. Will need to be
+        # modified for more complex types.
+        base_type = getfield(@__MODULE__, base.args[1])
+        base_types = collect(base_type.body.types)
+    else
+        base_type = getfield(@__MODULE__, base)
+        base_types = collect(base_type.types)
+    end
     base_fieldnames = fieldnames(base_type)
-    base_types = collect(base_type.types)
     res = :(mutable struct $(esc(name)) <: AbstractAgent end)
     for (f, T) in zip(base_fieldnames, base_types)
         push!(res.args[end].args, :($f::$T))

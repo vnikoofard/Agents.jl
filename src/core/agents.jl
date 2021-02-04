@@ -57,11 +57,13 @@ end
 ```
 """
 macro agent(name, base, fields)
-    base_fieldnames = :(fieldnames($base))
-    base_types = :(collect($base.types))
-    base_fields = [:($f::$T) for (f, T) in zip(eval(base_fieldnames), eval(base_types))]
+    base_type = getfield(@__MODULE__, base)
+    base_fieldnames = fieldnames(base_type)
+    base_types = collect(base_type.types)
     res = :(mutable struct $(esc(name)) <: AbstractAgent end)
-    push!(res.args[end].args, base_fields...)
+    for (f, T) in zip(base_fieldnames, base_types)
+        push!(res.args[end].args, :($f::$T))
+    end
     push!(res.args[end].args, map(esc,fields.args)...)
     return res
 end

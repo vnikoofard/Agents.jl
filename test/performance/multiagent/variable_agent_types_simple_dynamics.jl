@@ -1,3 +1,6 @@
+# The following simple model has a variable number of agent types,
+# but there is no killing or creating of additional agents.
+
 using Agents, Random
 
 mutable struct Agent1 <: AbstractAgent

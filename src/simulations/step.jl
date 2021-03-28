@@ -59,3 +59,28 @@ function step!(model::ABM, agent_step!, model_step!, n = 1, agents_first=true)
         s += 1
     end
 end
+
+# Multi-agent optimizations
+function step!(
+        model::ABM{S, UA, SchedulerType}, agent_step!, model_step!,
+        n = 1, agents_first=true
+    ) where {S, UA <: Union, SchedulerType}
+    s = 0
+    atypes = Agents.union_types(UA)
+    while until(s, n, model)
+        !agents_first && model_step!(model)
+        if agent_step! ≠ dummystep
+            # activation_order = schedule(model)
+            for A in atypes
+                agents_of_A = A[a for a in allagents(m) if typeof(a) == A]
+                for a in agents_of_A
+                    for index in activation_order
+                        agent_step!(a, model)
+                    end
+                end
+            end
+        end
+        agents_first && model_step!(model)
+        s += 1
+    end
+end

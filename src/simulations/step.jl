@@ -44,7 +44,15 @@ until(s, n, model) = !n(model, s)
 
 step!(model::ABM, agent_step!, n::Int=1, agents_first::Bool=true) = step!(model, agent_step!, dummystep, n, agents_first)
 
-function step!(model::ABM, agent_step!, model_step!, n = 1, agents_first=true)
+function step!(model::ABM{S, A}, agent_step!, model_step!, n = 1, agents_first=true) where {S, A}
+    if A <: Union
+        step_onetype!(model, agent_step!, model_step!, n, agents_first)
+    else
+        step_multitype!(model, agent_step!, model_step!, n, agents_first)
+    end
+end
+
+function step_onetype!(model, agent_step!, model_step!, n, agents_first)
     s = 0
     while until(s, n, model)
         !agents_first && model_step!(model)
@@ -61,10 +69,7 @@ function step!(model::ABM, agent_step!, model_step!, n = 1, agents_first=true)
 end
 
 # Multi-agent optimizations
-function step!(
-        model::ABM{S, UA, SchedulerType}, agent_step!, model_step!,
-        n = 1, agents_first=true
-    ) where {S, UA <: Union, SchedulerType}
+function step_multitype!(model::ABM{S, UA}, agent_step!, model_step!, n, agents_first) where {S, UA}
     s = 0
     atypes = Agents.union_types(UA)
     while until(s, n, model)
@@ -72,11 +77,9 @@ function step!(
         if agent_step! ≠ dummystep
             # activation_order = schedule(model)
             for A in atypes
-                agents_of_A = A[a for a in allagents(m) if typeof(a) == A]
+                agents_of_A = A[a for a in allagents(model) if typeof(a) == A]
                 for a in agents_of_A
-                    for index in activation_order
-                        agent_step!(a, model)
-                    end
+                    agent_step!(a, model)
                 end
             end
         end
